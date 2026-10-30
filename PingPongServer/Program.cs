@@ -1,91 +1,70 @@
-﻿using System.Net;
-using System.Net.Sockets;
-using System.Text;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
+using PingPongServer.Domain;
+using PingPongServer.Networking;
+using PingPongServer.Options;
+using PingPongServer.Selection;
 
-namespace PingPongServer
+namespace PingPongServer;
+
+internal static class Program
 {
-    internal class Program
+    public static async Task Main(string[] args)
     {
-        enum ConversationState
+        var builder = Host.CreateApplicationBuilder(args);
+        builder.Configuration
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false);
+
+        builder.Services
+            .AddOptions<ServerOptions>()
+            .BindConfiguration(ServerOptions.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        builder.Services
+            .AddOptions<JokeSelectionOptions>()
+            .BindConfiguration(JokeSelectionOptions.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        builder.Services
+            .AddOptions<JokeCatalogOptions>()
+            .BindConfiguration(JokeCatalogOptions.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        builder.Services.AddSingleton<RandomJokeSelector>();
+        builder.Services.AddSingleton<SequentialJokeSelector>();
+        builder.Services.AddSingleton<IJokeSelector>(serviceProvider =>
         {
-            WaitingForWhosThere,
-            WaitingForWho,
-            Finished
+            var selectionOptions = serviceProvider
+                .GetRequiredService<IOptions<JokeSelectionOptions>>()
+                .Value;
+
+            return selectionOptions.Strategy.Equals("Sequential", StringComparison.OrdinalIgnoreCase)
+                ? serviceProvider.GetRequiredService<SequentialJokeSelector>()
+                : serviceProvider.GetRequiredService<RandomJokeSelector>();
+        });
+
+        builder.Services.AddTransient<KnockKnockConversation>();
+        builder.Services.AddHostedService<KnockKnockServer>();
+
+        try
+        {
+            await builder.Build().RunAsync();
         }
-
-        static void Main(string[] args)
+        catch (OptionsValidationException exception)
         {
-            TcpListener listener = new TcpListener(IPAddress.Any, 5000);
-            listener.Start();
-
-            TcpClient client = listener.AcceptTcpClient();
-            NetworkStream stream = client.GetStream();
-            Console.WriteLine("Client connected.");
-
-            string message = "Knock Knock!";
-            byte[] messageBytes = Encoding.UTF8.GetBytes(message);
-            stream.Write(messageBytes, 0, messageBytes.Length);
-
-            ConversationState state = ConversationState.WaitingForWhosThere;
-
-            while (state != ConversationState.Finished)
+            Console.Error.WriteLine("Konfigurationsfejl:");
+            foreach (var failure in exception.Failures)
             {
-                byte[] buffer = new byte[1024];
-                int bytesRead = stream.Read(buffer, 0, buffer.Length);
-
-
-
-                string response = Encoding.UTF8.GetString(buffer, 0, bytesRead).Trim();
-                Console.WriteLine("Received message: " + response);
-
-                if (bytesRead == 0)
-                {
-                    message = "Please send something.";
-                    messageBytes = Encoding.UTF8.GetBytes(message);
-                    stream.Write(messageBytes, 0, messageBytes.Length);
-                    continue;
-                }
-
-                switch (state)
-                {
-                    case ConversationState.WaitingForWhosThere:
-                            if (string.Equals(response, "whos there?", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(response, "whos there", StringComparison.OrdinalIgnoreCase))
-                        {
-                            state = ConversationState.WaitingForWho;
-                            message = "Boo";
-                            messageBytes = Encoding.UTF8.GetBytes(message);
-                            stream.Write(messageBytes, 0, messageBytes.Length);
-                        }
-                        else
-                        {
-                            message = "Please respond with 'whos there?'";
-                            messageBytes = Encoding.UTF8.GetBytes(message);
-                            stream.Write(messageBytes, 0, messageBytes.Length);
-                        }
-                        break;
-
-                    case ConversationState.WaitingForWho:
-                        if (string.Equals(response, "boo who?", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(response, "boo who", StringComparison.OrdinalIgnoreCase))
-                        {
-                            state = ConversationState.Finished;
-                            message = "Don't cry, it's just a joke!";
-                            messageBytes = Encoding.UTF8.GetBytes(message);
-                            stream.Write(messageBytes, 0, messageBytes.Length);
-                        }
-                        else
-                        {
-                            message = "Please respond with 'boo who?'";
-                            messageBytes = Encoding.UTF8.GetBytes(message);
-                            stream.Write(messageBytes, 0, messageBytes.Length);
-                        }
-                        break;
-                }
+                Console.Error.WriteLine($"- {failure}");
             }
 
-            client.Close();
-            listener.Stop();
+            Environment.ExitCode = 1;
         }
     }
 }

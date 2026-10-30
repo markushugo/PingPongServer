@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="../PingPongClient/PingPongClient/PingPongClient.csproj" />
   <Project Path="PingPongServer/PingPongServer.csproj" />
 </Solution>
