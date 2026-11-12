@@ -9,6 +9,7 @@ using PingPongServer.Options;
 
 namespace PingPongServer.Networking;
 
+/// <summary>Modtager TCP-klienter og starter en separat jokesamtale for hver klient.</summary>
 public sealed class KnockKnockServer(
     IOptions<ServerOptions> options,
     KnockKnockConversation conversation,
@@ -19,6 +20,7 @@ public sealed class KnockKnockServer(
     private readonly int _port = options.Value.Port;
     private TcpListener? _listener;
 
+    /// <summary>Lytter efter klienter, indtil applikationen bliver stoppet.</summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _listener = new TcpListener(IPAddress.Any, _port);
@@ -30,13 +32,29 @@ public sealed class KnockKnockServer(
             while (!stoppingToken.IsCancellationRequested)
             {
                 var client = await _listener.AcceptTcpClientAsync(stoppingToken);
+                var endpoint = client.Client.RemoteEndPoint?.ToString() ?? "ukendt";
+                // Klienten afvises straks, hvis alle tilladte pladser er optaget.
                 if (!_clientSlots.Wait(0))
                 {
-                    await RejectClientAsync(client, stoppingToken);
+                    logger.LogWarning("Klient {Endpoint} afvist: maksimum antal klienter.", endpoint);
+                    try
+                    {
+                        await RejectClientAsync(client, stoppingToken);
+                    }
+                    catch (IOException)
+                    {
+                        // Klienten kan lukke, før afvisningen er sendt.
+                    }
+                    finally
+                    {
+                        logger.LogInformation("Klient {Endpoint} disconnected (afvist).", endpoint);
+                    }
                     continue;
                 }
 
-                var task = HandleClientAsync(client, stoppingToken);
+                // Opgaven gemmes, så serveren kan vente på aktive klienter ved nedlukning.
+                logger.LogInformation("Klient {Endpoint} connected.", endpoint);
+                var task = HandleClientAsync(client, endpoint, stoppingToken);
                 _clientTasks.TryAdd(task, 0);
                 _ = task.ContinueWith(
                     completedTask => _clientTasks.TryRemove(completedTask, out _),
@@ -55,6 +73,7 @@ public sealed class KnockKnockServer(
         }
     }
 
+    /// <summary>Stopper listeneren og venter på igangværende klientsamtaler.</summary>
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         _listener?.Stop();
@@ -63,7 +82,8 @@ public sealed class KnockKnockServer(
         _clientSlots.Dispose();
     }
 
-    private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
+    /// <summary>Opretter en session og gennemfører samtalen med én klient.</summary>
+    private async Task HandleClientAsync(TcpClient client, string endpoint, CancellationToken cancellationToken)
     {
         try
         {
@@ -82,9 +102,11 @@ public sealed class KnockKnockServer(
         finally
         {
             _clientSlots.Release();
+            logger.LogInformation("Klient {Endpoint} disconnected.", endpoint);
         }
     }
 
+    /// <summary>Sender en forklaring og lukker forbindelsen til en overskydende klient.</summary>
     private static async Task RejectClientAsync(TcpClient client, CancellationToken cancellationToken)
     {
         using (client)

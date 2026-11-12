@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace PingPongServer.Options;
 
+/// <summary>Indeholder serverens port og maksimale antal samtidige klienter.</summary>
 public sealed class ServerOptions
 {
     public const string SectionName = "Server";

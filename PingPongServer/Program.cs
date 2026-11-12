@@ -9,8 +9,10 @@ using PingPongServer.Selection;
 
 namespace PingPongServer;
 
+/// <summary>Konfigurerer og starter PingPong-serveren.</summary>
 internal static class Program
 {
+    /// <summary>Indlæser konfiguration, registrerer services og kører serveren.</summary>
     public static async Task Main(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
@@ -36,6 +38,7 @@ internal static class Program
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        // Begge strategier registreres, så konfigurationen kan vælge den aktive.
         builder.Services.AddSingleton<RandomJokeSelector>();
         builder.Services.AddSingleton<SequentialJokeSelector>();
         builder.Services.AddSingleton<IJokeSelector>(serviceProvider =>
@@ -52,6 +55,7 @@ internal static class Program
         builder.Services.AddTransient<KnockKnockConversation>();
         builder.Services.AddHostedService<KnockKnockServer>();
 
+        // Konfigurationsfejl vises samlet og afslutter programmet med en fejlkode.
         try
         {
             await builder.Build().RunAsync();

@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace PingPongServer.Options;
 
+/// <summary>Angiver om jokes vælges tilfældigt eller i rækkefølge.</summary>
 public sealed class JokeSelectionOptions
 {
     public const string SectionName = "JokeSelection";
