@@ -9,18 +9,16 @@ namespace PingPongServer.Selection;
 public sealed class SequentialJokeSelector : IJokeSelector
 {
     private readonly IReadOnlyList<KnockKnockJoke> _jokes;
-    private long _nextIndex;
+    private int _nextIndex;
 
-    /// <summary>Henter de validerede jokes fra konfigurationen.</summary>
     public SequentialJokeSelector(IOptions<JokeCatalogOptions> options)
     {
         _jokes = options.Value.Items;
     }
 
-    /// <inheritdoc />
     public KnockKnockJoke SelectJoke()
     {
         var index = Interlocked.Increment(ref _nextIndex) - 1;
-        return _jokes[(int)((ulong)index % (ulong)_jokes.Count)];
+        return _jokes[index % _jokes.Count];
     }
 }
